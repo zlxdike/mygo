@@ -1,0 +1,38 @@
+# A scratch workflow, for a fork only: it runs what a change needs checked
+# and nothing else. Not part of any pull request.
+name: try
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS GUI tests
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Build and vet
+        run: go build ./... && go vet ./...
+      - name: The drop test
+        env:
+          MYGO_E2E: 1
+        run: go test -count=1 -run TestContentWindowWebViewDrop -v ./internal/e2e
+      - name: GUI tests
+        env:
+          MYGO_E2E: 1
+        run: go test -count=1 ./internal/e2e 2>&1 | tee /tmp/gui.log
+      - name: Failures
+        if: failure()
+        run: grep -E "^(---|    [a-z_0-9]+\.go:)" /tmp/gui.log | head -40
